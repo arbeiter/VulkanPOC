@@ -1,14 +1,10 @@
 cmake_minimum_required(VERSION 3.7)
 
-project(SDL2Test)
-
-find_package(SDL2 REQUIRED)
+project(SDLTestApp)
 find_package(Vulkan REQUIRED)
-include_directories(${SDL2_INCLUDE_DIRS})
-
-add_executable(SDL2Test Main.cpp)
-target_link_libraries(SDL2Test ${SDL2_LIBRARIES})
+add_subdirectory(third_party)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
+add_subdirectory(src)
 
 find_program(GLSL_VALIDATOR glslangValidator HINTS /usr/bin /usr/local/bin $ENV{VULKAN_SDK}/Bin/ $ENV{VULKAN_SDK}/Bin32/)
 
