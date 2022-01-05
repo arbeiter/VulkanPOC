@@ -19,6 +19,12 @@ public:
   std::vector<VkImage> _swapchainImages;
   std::vector<VkImageView> _swapchainImageViews;
 
+	VkQueue _graphicsQueue; //queue we will submit to
+	uint32_t _graphicsQueueFamily; //family of that queue
+
+	VkCommandPool _commandPool; //the command pool for our commands
+	VkCommandBuffer _mainCommandBuffer; //the buffer we will record into
+
 	bool _isInitialized{ false };
 	int _frameNumber {0};
 
@@ -39,6 +45,7 @@ public:
 	void run();
 
 private:
+  void init_commands();
 	void init_vulkan();
   void init_swapchain();
 };

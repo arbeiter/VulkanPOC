@@ -20,8 +20,7 @@
 		}                                                           \
 	} while (0)
 
-void VulkanEngine::init()
-{
+void VulkanEngine::init() {
 	// We initialize SDL and create a window with it. 
 	SDL_Init(SDL_INIT_VIDEO);
 
@@ -38,9 +37,18 @@ void VulkanEngine::init()
 
   init_vulkan();
   init_swapchain();
+  init_commands();
 	
 	//everything went fine
 	_isInitialized = true;
+}
+
+void VulkanEngine::init_commands() {
+	VkCommandPoolCreateInfo commandPoolInfo = vkinit::command_pool_create_info(_graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	VK_CHECK(vkCreateCommandPool(_device, &commandPoolInfo, nullptr, &_commandPool));
+
+	VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(_commandPool, 1);
+	VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_mainCommandBuffer));
 }
 
 void VulkanEngine::init_vulkan() {
@@ -79,6 +87,10 @@ void VulkanEngine::init_vulkan() {
 	// Get the VkDevice handle used in the rest of a Vulkan application
 	_device = vkbDevice.device;
 	_chosenGPU = physicalDevice.physical_device;
+
+	// use vkbootstrap to get a Graphics queue
+	_graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
+	_graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
 }
 
 void VulkanEngine::init_swapchain() {
@@ -100,32 +112,30 @@ void VulkanEngine::init_swapchain() {
 	_swapchainImageFormat = vkbSwapchain.image_format;
 }
 
-void VulkanEngine::cleanup()
-{	
-	if (_isInitialized) {
-		vkDestroySwapchainKHR(_device, _swapchain, nullptr);
+void VulkanEngine::cleanup() {	
+		if (_isInitialized) {
+			vkDestroyCommandPool(_device, _commandPool, nullptr);
+			vkDestroySwapchainKHR(_device, _swapchain, nullptr);
 
-		//destroy swapchain resources
-		for (int i = 0; i < _swapchainImageViews.size(); i++) {
+			//destroy swapchain resources
+			for (int i = 0; i < _swapchainImageViews.size(); i++) {
 
-			vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
+				vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
+			}
+
+			vkDestroyDevice(_device, nullptr);
+			vkDestroySurfaceKHR(_instance, _surface, nullptr);
+			vkb::destroy_debug_utils_messenger(_instance, _debug_messenger);
+			vkDestroyInstance(_instance, nullptr);	
+			SDL_DestroyWindow(_window);
 		}
-
-		vkDestroyDevice(_device, nullptr);
-		vkDestroySurfaceKHR(_instance, _surface, nullptr);
-		vkb::destroy_debug_utils_messenger(_instance, _debug_messenger);
-		vkDestroyInstance(_instance, nullptr);	
-		SDL_DestroyWindow(_window);
-	}
 }
 
-void VulkanEngine::draw()
-{
+void VulkanEngine::draw() {
 	//nothing yet
 }
 
-void VulkanEngine::run()
-{
+void VulkanEngine::run() {
 	SDL_Event e;
 	bool bQuit = false;
 
