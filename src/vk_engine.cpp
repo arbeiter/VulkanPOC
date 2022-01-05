@@ -7,6 +7,19 @@
 #include "vk_initializers.h"
 #include "VkBootstrap.h"
 
+#include <iostream>
+
+#define VK_CHECK(x)                                                 \
+	do                                                              \
+	{                                                               \
+		VkResult err = x;                                           \
+		if (err)                                                    \
+		{                                                           \
+			std::cout <<"Detected Vulkan error: " << err << std::endl; \
+			abort();                                                \
+		}                                                           \
+	} while (0)
+
 void VulkanEngine::init()
 {
 	// We initialize SDL and create a window with it. 
@@ -22,9 +35,14 @@ void VulkanEngine::init()
 		_windowExtent.height,
 		window_flags
 	);
+
+  init_vulkan();
 	
 	//everything went fine
 	_isInitialized = true;
+}
+
+void VulkanEngine::init_vulkan() {
 }
 
 void VulkanEngine::cleanup()
