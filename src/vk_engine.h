@@ -5,6 +5,21 @@
 #include <vk_types.h>
 #include <vector>
 
+class PipelineBuilder {
+public:
+
+	std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
+	VkPipelineVertexInputStateCreateInfo _vertexInputInfo;
+	VkPipelineInputAssemblyStateCreateInfo _inputAssembly;
+	VkViewport _viewport;
+	VkRect2D _scissor;
+	VkPipelineRasterizationStateCreateInfo _rasterizer;
+	VkPipelineColorBlendAttachmentState _colorBlendAttachment;
+	VkPipelineMultisampleStateCreateInfo _multisampling;
+	VkPipelineLayout _pipelineLayout;
+	VkPipeline build_pipeline(VkDevice device, VkRenderPass pass);
+};
+
 class VulkanEngine {
 public:
 	VkSemaphore _presentSemaphore, _renderSemaphore;
@@ -22,6 +37,9 @@ public:
   VkFormat _swapchainImageFormat;
   std::vector<VkImage> _swapchainImages;
   std::vector<VkImageView> _swapchainImageViews;
+
+	VkPipelineLayout _trianglePipelineLayout;
+	VkPipeline _trianglePipeline;
 
 	VkQueue _graphicsQueue; //queue we will submit to
 	uint32_t _graphicsQueueFamily; //family of that queue
@@ -53,6 +71,8 @@ private:
 	void init_vulkan();
   void init_swapchain();
   void init_default_renderpass();
+	void init_pipelines();
   void init_framebuffers();
 	void init_sync_structures();
+  bool load_shader_module(const char* filePath, VkShaderModule* outShaderModule);
 };
