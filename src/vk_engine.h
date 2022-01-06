@@ -7,11 +7,15 @@
 
 class VulkanEngine {
 public:
+	VkSemaphore _presentSemaphore, _renderSemaphore;
+	VkFence _renderFence;
 
 	VkInstance _instance;
 	VkDebugUtilsMessengerEXT _debug_messenger;
 	VkPhysicalDevice _chosenGPU;
 	VkDevice _device;
+  VkRenderPass _renderPass;
+  std::vector<VkFramebuffer> _framebuffers;
 
   VkSurfaceKHR _surface;
   VkSwapchainKHR _swapchain;
@@ -48,4 +52,7 @@ private:
   void init_commands();
 	void init_vulkan();
   void init_swapchain();
+  void init_default_renderpass();
+  void init_framebuffers();
+	void init_sync_structures();
 };
