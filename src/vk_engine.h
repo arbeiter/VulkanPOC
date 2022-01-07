@@ -4,6 +4,25 @@
 
 #include <vk_types.h>
 #include <vector>
+#include <functional>
+#include <deque>
+
+struct DeletionQueue {
+	std::deque<std::function<void()>> deletors;
+
+	void push_function(std::function<void()>&& function) {
+		deletors.push_back(function);
+	}
+
+	void flush() {
+		// reverse iterate the deletion queue to execute all the functions
+		for (auto it = deletors.rbegin(); it != deletors.rend(); it++) {
+			(*it)(); //call the function
+		}
+
+		deletors.clear();
+	}
+};
 
 class PipelineBuilder {
 public:
@@ -40,6 +59,7 @@ public:
 
 	VkPipelineLayout _trianglePipelineLayout;
 	VkPipeline _trianglePipeline;
+  VkPipeline _redTrianglePipeline;
 
 	VkQueue _graphicsQueue; //queue we will submit to
 	uint32_t _graphicsQueueFamily; //family of that queue
@@ -47,8 +67,11 @@ public:
 	VkCommandPool _commandPool; //the command pool for our commands
 	VkCommandBuffer _mainCommandBuffer; //the buffer we will record into
 
+	DeletionQueue _mainDeletionQueue;
+
 	bool _isInitialized{ false };
 	int _frameNumber {0};
+	int _selectedShader {0};
 
 	VkExtent2D _windowExtent{ 1700 , 900 };
 

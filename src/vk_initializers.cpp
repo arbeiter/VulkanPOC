@@ -1,5 +1,24 @@
 #include "vk_initializers.h"
 
+//implementation
+VkFenceCreateInfo vkinit::fence_create_info(VkFenceCreateFlags flags)
+{
+    VkFenceCreateInfo fenceCreateInfo = {};
+    fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceCreateInfo.pNext = nullptr;
+    fenceCreateInfo.flags = flags;
+    return fenceCreateInfo;
+}
+
+VkSemaphoreCreateInfo vkinit::semaphore_create_info(VkSemaphoreCreateFlags flags)
+{
+    VkSemaphoreCreateInfo semCreateInfo = {};
+    semCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    semCreateInfo.pNext = nullptr;
+    semCreateInfo.flags = flags;
+    return semCreateInfo;
+}
+
 VkCommandPoolCreateInfo vkinit::command_pool_create_info(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags /*= 0*/)
 {
   VkCommandPoolCreateInfo info = {};
