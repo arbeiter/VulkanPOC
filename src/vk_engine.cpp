@@ -2,6 +2,7 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
+#include <glm/gtx/transform.hpp>
 
 #include "vk_types.h"
 #include "vk_initializers.h"
@@ -386,8 +387,27 @@ void VulkanEngine::init_pipelines() {
 	pipelineBuilder._shaderStages.push_back(
 		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
 
-	//build the mesh triangle pipeline
-	_meshPipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
+  //we start from just the default empty pipeline layout info
+  VkPipelineLayoutCreateInfo mesh_pipeline_layout_info = vkinit::pipeline_layout_create_info();
+
+  //setup push constants
+  VkPushConstantRange push_constant;
+  //offset 0
+  push_constant.offset = 0;
+  //size of a MeshPushConstant struct
+  push_constant.size = sizeof(MeshPushConstants);
+  //for the vertex shader
+  push_constant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+  mesh_pipeline_layout_info.pPushConstantRanges = &push_constant;
+  mesh_pipeline_layout_info.pushConstantRangeCount = 1;
+
+  VK_CHECK(vkCreatePipelineLayout(_device, &mesh_pipeline_layout_info, nullptr, &_meshPipelineLayout));
+
+  //hook the push constants layout
+  pipelineBuilder._pipelineLayout = _meshPipelineLayout;
+  //build the mesh triangle pipeline
+  _meshPipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
 
 	//destroy all shader modules, outside of the queue
 	vkDestroyShaderModule(_device, meshVertShader, nullptr);
@@ -453,14 +473,24 @@ void VulkanEngine::draw() {
 	rpInfo.pClearValues = &clearValue;
 
 	vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
-
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
 
 	//bind the mesh vertex buffer with offset 0
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(cmd, 0, 1, &_triangleMesh._vertexBuffer._buffer, &offset);
 
+	glm::vec3 camPos = { 0.f,0.f,-2.f };
+	glm::mat4 view = glm::translate(glm::mat4(1.f), camPos);
+	glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
+	projection[1][1] *= -1;
+	glm::mat4 model = glm::rotate(glm::mat4{ 1.0f }, glm::radians(_frameNumber * 0.4f), glm::vec3(0, 1, 0));
+	//calculate final mesh matrix
+	glm::mat4 mesh_matrix = projection * view * model;
+
+	MeshPushConstants constants;
+	constants.render_matrix = mesh_matrix;
 	//we can now draw the mesh
+	vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
 	vkCmdDraw(cmd, _triangleMesh._vertices.size(), 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 	//finalize the command buffer (we can no longer add commands, but it can now be executed)

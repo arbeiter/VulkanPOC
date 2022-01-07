@@ -1,5 +1,6 @@
 find_package(Vulkan REQUIRED)
 add_library(sdl2 INTERFACE)
+add_library(glm INTERFACE)
 add_library(vkbootstrap STATIC)
 add_library(vma INTERFACE)
 
@@ -14,5 +15,6 @@ target_sources(vkbootstrap PRIVATE
       vkbootstrap/VkBootstrap.cpp
 )
 target_include_directories(vma INTERFACE vma)
+target_include_directories(glm INTERFACE glm)
 target_include_directories(vkbootstrap PUBLIC vkbootstrap)
 target_link_libraries(vkbootstrap PUBLIC Vulkan::Vulkan $<$<BOOL:UNIX>:${CMAKE_DL_LIBS}>)
