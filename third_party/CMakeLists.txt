@@ -2,6 +2,7 @@ find_package(Vulkan REQUIRED)
 add_library(sdl2 INTERFACE)
 add_library(vkbootstrap STATIC)
 add_library(vma INTERFACE)
+
 set(sdl2_DIR "SDL_PATH" CACHE PATH "Path to SDL2")
 
 target_include_directories(sdl2 INTERFACE ${sdl2_DIR}/include/SDL2 ${sdl2_image_DIR}/include/SDL2)

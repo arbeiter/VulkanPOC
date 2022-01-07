@@ -6,20 +6,22 @@
 #include "vk_types.h"
 #include "vk_initializers.h"
 #include "VkBootstrap.h"
-
 #include <iostream>
 #include <fstream>
 
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
+
 #define VK_CHECK(x)                                                 \
 	do                                                              \
-	{                                                               \
-		VkResult err = x;                                           \
-		if (err)                                                    \
-		{                                                           \
-			std::cout <<"Detected Vulkan error: " << err << std::endl; \
-			abort();                                                \
-		}                                                           \
-	} while (0)
+{                                                               \
+  VkResult err = x;                                           \
+  if (err)                                                    \
+  {                                                           \
+    std::cout <<"Detected Vulkan error: " << err << std::endl; \
+    abort();                                                \
+  }                                                           \
+} while (0)
 
 void VulkanEngine::init() {
 	// We initialize SDL and create a window with it. 
@@ -164,6 +166,13 @@ void VulkanEngine::init_vulkan() {
 	// use vkbootstrap to get a Graphics queue
 	_graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
 	_graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
+
+    //initialize the memory allocator
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.physicalDevice = _chosenGPU;
+    allocatorInfo.device = _device;
+    allocatorInfo.instance = _instance;
+    vmaCreateAllocator(&allocatorInfo, &_allocator);
 }
 
 void VulkanEngine::init_swapchain() {

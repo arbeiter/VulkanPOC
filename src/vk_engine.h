@@ -68,6 +68,7 @@ public:
 	VkCommandBuffer _mainCommandBuffer; //the buffer we will record into
 
 	DeletionQueue _mainDeletionQueue;
+  VmaAllocator _allocator; //vma lib allocator
 
 	bool _isInitialized{ false };
 	int _frameNumber {0};
