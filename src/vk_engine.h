@@ -6,6 +6,7 @@
 #include <vector>
 #include <functional>
 #include <deque>
+#include <vk_mesh.h>
 
 struct DeletionQueue {
 	std::deque<std::function<void()>> deletors;
@@ -60,6 +61,8 @@ public:
 	VkPipelineLayout _trianglePipelineLayout;
 	VkPipeline _trianglePipeline;
   VkPipeline _redTrianglePipeline;
+  VkPipeline _meshPipeline;
+  Mesh _triangleMesh;
 
 	VkQueue _graphicsQueue; //queue we will submit to
 	uint32_t _graphicsQueueFamily; //family of that queue
@@ -99,4 +102,6 @@ private:
   void init_framebuffers();
 	void init_sync_structures();
   bool load_shader_module(const char* filePath, VkShaderModule* outShaderModule);
+  void load_meshes();
+  void upload_mesh(Mesh& mesh);
 };
