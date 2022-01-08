@@ -48,6 +48,7 @@ public:
 
 class VulkanEngine {
 public:
+  Mesh _monkey_mesh;
 	VkSemaphore _presentSemaphore, _renderSemaphore;
 	VkFence _renderFence;
 

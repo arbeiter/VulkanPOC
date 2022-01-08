@@ -477,7 +477,7 @@ void VulkanEngine::draw() {
 
 	//bind the mesh vertex buffer with offset 0
 	VkDeviceSize offset = 0;
-	vkCmdBindVertexBuffers(cmd, 0, 1, &_triangleMesh._vertexBuffer._buffer, &offset);
+	vkCmdBindVertexBuffers(cmd, 0, 1, &_monkey_mesh._vertexBuffer._buffer, &offset);
 
 	glm::vec3 camPos = { 0.f,0.f,-2.f };
 	glm::mat4 view = glm::translate(glm::mat4(1.f), camPos);
@@ -491,7 +491,7 @@ void VulkanEngine::draw() {
 	constants.render_matrix = mesh_matrix;
 	//we can now draw the mesh
 	vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
-	vkCmdDraw(cmd, _triangleMesh._vertices.size(), 1, 0, 0);
+	vkCmdDraw(cmd, _monkey_mesh._vertices.size(), 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 	//finalize the command buffer (we can no longer add commands, but it can now be executed)
 	VK_CHECK(vkEndCommandBuffer(cmd));
@@ -595,24 +595,6 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
       }
 }
 
-void VulkanEngine::load_meshes() {
-	//make the array 3 vertices long
-	_triangleMesh._vertices.resize(3);
-
-	//vertex positions
-	_triangleMesh._vertices[0].position = { 1.f, 1.f, 0.0f };
-	_triangleMesh._vertices[1].position = {-1.f, 1.f, 0.0f };
-	_triangleMesh._vertices[2].position = { 0.f,-1.f, 0.0f };
-
-	//vertex colors, all green
-	_triangleMesh._vertices[0].color = { 0.f, 1.f, 0.0f }; //pure green
-	_triangleMesh._vertices[1].color = { 0.f, 1.f, 0.0f }; //pure green
-	_triangleMesh._vertices[2].color = { 0.f, 1.f, 0.0f }; //pure green
-
-	//we don't care about the vertex normals
-	upload_mesh(_triangleMesh);
-}
-
 void VulkanEngine::upload_mesh(Mesh& mesh) {
 	//allocate vertex buffer
 	VkBufferCreateInfo bufferInfo = {};
@@ -646,6 +628,26 @@ void VulkanEngine::upload_mesh(Mesh& mesh) {
 	memcpy(data, mesh._vertices.data(), mesh._vertices.size() * sizeof(Vertex));
 
 	vmaUnmapMemory(_allocator, mesh._vertexBuffer._allocation);
+}
+
+void VulkanEngine::load_meshes()
+{
+	_triangleMesh._vertices.resize(3);
+
+	_triangleMesh._vertices[0].position = { 1.f,1.f, 0.5f };
+	_triangleMesh._vertices[1].position = { -1.f,1.f, 0.5f };
+	_triangleMesh._vertices[2].position = { 0.f,-1.f, 0.5f };
+
+	_triangleMesh._vertices[0].color = { 0.f,1.f, 0.0f }; //pure green
+	_triangleMesh._vertices[1].color = { 0.f,1.f, 0.0f }; //pure green
+	_triangleMesh._vertices[2].color = { 0.f,1.f, 0.0f }; //pure green
+
+    //load the monkey
+	_monkey_mesh.load_from_obj("../assets/monkey_smooth.obj");
+
+  //make sure both meshes are sent to the GPU
+  upload_mesh(_triangleMesh);
+	upload_mesh(_monkey_mesh);
 }
 
 void VulkanEngine::run() {

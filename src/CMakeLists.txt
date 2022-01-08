@@ -8,7 +8,9 @@ add_executable(SDLTestApp
    vk_initializers.cpp
    vk_initializers.h)
 target_include_directories(SDLTestApp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(SDLTestApp glm vkbootstrap vma)
+target_link_libraries(SDLTestApp
+  glm vkbootstrap vma
+  tinyobjloader)
 target_link_libraries(SDLTestApp Vulkan::Vulkan sdl2)
 
 add_dependencies(SDLTestApp Shaders)
