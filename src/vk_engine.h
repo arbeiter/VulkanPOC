@@ -33,7 +33,7 @@ struct DeletionQueue {
 
 class PipelineBuilder {
 public:
-
+	VkPipelineDepthStencilStateCreateInfo _depthStencil;
 	std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
 	VkPipelineVertexInputStateCreateInfo _vertexInputInfo;
 	VkPipelineInputAssemblyStateCreateInfo _inputAssembly;
@@ -51,6 +51,10 @@ public:
   Mesh _monkey_mesh;
 	VkSemaphore _presentSemaphore, _renderSemaphore;
 	VkFence _renderFence;
+
+  VkImageView _depthImageView;
+  AllocatedMemory _depthImage;
+  VkFormat _depthFormat;
 
 	VkInstance _instance;
 	VkDebugUtilsMessengerEXT _debug_messenger;
