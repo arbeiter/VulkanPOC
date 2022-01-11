@@ -3,6 +3,7 @@
 #pragma once
 
 #include <vk_types.h>
+#include <string>
 #include <vector>
 #include <functional>
 #include <deque>
@@ -12,6 +13,17 @@
 struct MeshPushConstants {
 	glm::vec4 data;
 	glm::mat4 render_matrix;
+};
+
+struct Material {
+	VkPipeline pipeline;
+	VkPipelineLayout pipelineLayout;
+};
+
+struct RenderObject {
+	Mesh* mesh;
+	Material* material;
+	glm::mat4 transformMatrix;
 };
 
 struct DeletionQueue {
@@ -48,6 +60,13 @@ public:
 
 class VulkanEngine {
 public:
+
+
+
+	//default array of renderable objects
+	std::unordered_map<std::string,Material> _materials;
+	std::unordered_map<std::string,Mesh> _meshes;
+	std::vector<RenderObject> _renderables;
   Mesh _monkey_mesh;
 	VkSemaphore _presentSemaphore, _renderSemaphore;
 	VkFence _renderFence;
@@ -93,6 +112,8 @@ public:
 
 	struct SDL_Window* _window{ nullptr };
 
+  void init_scene();
+
 	//initializes everything in the engine
 	void init();
 
@@ -104,6 +125,18 @@ public:
 
 	//run main loop
 	void run();
+
+	//create material and add it to the map
+	Material* create_material(VkPipeline pipeline, VkPipelineLayout layout,const std::string& name);
+
+	//returns nullptr if it can't be found
+	Material* get_material(const std::string& name);
+
+	//returns nullptr if it can't be found
+	Mesh* get_mesh(const std::string& name);
+
+	//our draw function
+	void draw_objects(VkCommandBuffer cmd,RenderObject* first, int count);
 
 private:
   void init_commands();
