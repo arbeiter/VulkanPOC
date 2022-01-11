@@ -10,6 +10,29 @@
 #include <vk_mesh.h>
 #include <glm/glm.hpp>
 
+
+//number of frames to overlap when rendering
+constexpr unsigned int FRAME_OVERLAP = 2;
+
+struct GPUCameraData{
+	glm::mat4 view;
+	glm::mat4 proj;
+	glm::mat4 viewproj;
+};
+
+struct FrameData {
+	VkSemaphore _presentSemaphore, _renderSemaphore;
+	VkFence _renderFence;	
+
+	VkCommandPool _commandPool;
+	VkCommandBuffer _mainCommandBuffer;
+
+	//buffer that holds a single GPUCameraData to use when rendering
+	AllocatedBuffer cameraBuffer;
+
+	VkDescriptorSet globalDescriptor;
+};
+
 struct MeshPushConstants {
 	glm::vec4 data;
 	glm::mat4 render_matrix;
@@ -59,17 +82,22 @@ public:
 };
 
 class VulkanEngine {
+
 public:
+  VkDescriptorSetLayout _globalSetLayout;
+  VkDescriptorPool _descriptorPool;
 
+  //frame storage
+  FrameData _frames[FRAME_OVERLAP];
 
+  //getter for the frame we are rendering to right now.
+  FrameData& get_current_frame();
 
 	//default array of renderable objects
 	std::unordered_map<std::string,Material> _materials;
 	std::unordered_map<std::string,Mesh> _meshes;
 	std::vector<RenderObject> _renderables;
   Mesh _monkey_mesh;
-	VkSemaphore _presentSemaphore, _renderSemaphore;
-	VkFence _renderFence;
 
   VkImageView _depthImageView;
   AllocatedMemory _depthImage;
@@ -97,9 +125,6 @@ public:
 
 	VkQueue _graphicsQueue; //queue we will submit to
 	uint32_t _graphicsQueueFamily; //family of that queue
-
-	VkCommandPool _commandPool; //the command pool for our commands
-	VkCommandBuffer _mainCommandBuffer; //the buffer we will record into
 
 	DeletionQueue _mainDeletionQueue;
   VmaAllocator _allocator; //vma lib allocator
@@ -138,6 +163,8 @@ public:
 	//our draw function
 	void draw_objects(VkCommandBuffer cmd,RenderObject* first, int count);
 
+  AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+
 private:
   void init_commands();
 	void init_vulkan();
@@ -146,6 +173,7 @@ private:
 	void init_pipelines();
   void init_framebuffers();
 	void init_sync_structures();
+  void init_descriptors();
   bool load_shader_module(const char* filePath, VkShaderModule* outShaderModule);
   void load_meshes();
   void upload_mesh(Mesh& mesh);
