@@ -202,10 +202,7 @@ void VulkanEngine::cleanup()
   }
 }
 
-void VulkanEngine::draw()
-{
-
-
+void VulkanEngine::draw() {
   //wait until the GPU has finished rendering the last frame. Timeout of 1 second
   VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
   VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
@@ -247,12 +244,6 @@ void VulkanEngine::draw()
 
   vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-  vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
-
-  //bind the mesh vertex buffer with offset 0
-  VkDeviceSize offset = 0;
-  vkCmdBindVertexBuffers(cmd, 0, 1, &_monkey_mesh._vertexBuffer._buffer, &offset);
-
   draw_objects(cmd, _renderables.data(), _renderables.size());
 
   //finalize the render pass
@@ -263,7 +254,6 @@ void VulkanEngine::draw()
   //prepare the submission to the queue. 
   //we want to wait on the _presentSemaphore, as that semaphore is signaled when the swapchain is ready
   //we will signal the _renderSemaphore, to signal that rendering has finished
-
   VkSubmitInfo submit = vkinit::submit_info(&cmd);
   VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
@@ -375,6 +365,9 @@ void VulkanEngine::init_vulkan()
 
   _graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
 
+  _gpuProperties = vkbDevice.physical_device.properties;
+  std::cout << "The GPU has a minimum buffer alignment of " << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
+
   //initialize the memory allocator
   VmaAllocatorCreateInfo allocatorInfo = {};
   allocatorInfo.physicalDevice = _chosenGPU;
@@ -386,6 +379,17 @@ void VulkanEngine::init_vulkan()
       vmaDestroyAllocator(_allocator);
       });
 }
+
+size_t VulkanEngine::pad_uniform_buffer_size(size_t originalSize) {
+	// Calculate required alignment based on minimum device offset alignment
+	size_t minUboAlignment = _gpuProperties.limits.minUniformBufferOffsetAlignment;
+	size_t alignedSize = originalSize;
+	if (minUboAlignment > 0) {
+		alignedSize = (alignedSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
+	}
+	return alignedSize;
+}
+
 
 void VulkanEngine::init_swapchain()
 {
@@ -727,8 +731,6 @@ void VulkanEngine::init_pipelines()
   pipelineBuilder._shaderStages.clear();
 
   //compile mesh vertex shader
-
-
   VkShaderModule meshVertShader;
   if (!load_shader_module("../shaders/tri_mesh_pushconstants.vert.spv", &meshVertShader))
   {
@@ -741,10 +743,6 @@ void VulkanEngine::init_pipelines()
   //add the other shaders
   pipelineBuilder._shaderStages.push_back(
       vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
-
-  //make sure that triangleFragShader is holding the compiled colored_triangle.frag
-  pipelineBuilder._shaderStages.push_back(
-      vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
 
   //we start from just the default empty pipeline layout info
   VkPipelineLayoutCreateInfo mesh_pipeline_layout_info = vkinit::pipeline_layout_create_info();
@@ -770,14 +768,8 @@ void VulkanEngine::init_pipelines()
   create_material(_meshPipeline, _meshPipelineLayout, "defaultmesh");
 
   vkDestroyShaderModule(_device, meshVertShader, nullptr);
-  vkDestroyShaderModule(_device, redTriangleVertShader, nullptr);
-  vkDestroyShaderModule(_device, redTriangleFragShader, nullptr);
-  vkDestroyShaderModule(_device, triangleFragShader, nullptr);
-  vkDestroyShaderModule(_device, triangleVertexShader, nullptr);
 
   _mainDeletionQueue.push_function([=]() {
-      vkDestroyPipeline(_device, _redTrianglePipeline, nullptr);
-      vkDestroyPipeline(_device, _trianglePipeline, nullptr);
       vkDestroyPipeline(_device, _meshPipeline, nullptr);
 
       vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
@@ -999,6 +991,8 @@ void VulkanEngine::init_descriptors() {
   //point to the camera buffer binding
   setinfo.pBindings = &camBufferBinding;
 
+  vkCreateDescriptorSetLayout(_device, &setinfo, nullptr, &_globalSetLayout);
+
   //create a descriptor pool that will hold 10 uniform buffers
   std::vector<VkDescriptorPoolSize> sizes =
   {
@@ -1061,10 +1055,8 @@ void VulkanEngine::init_descriptors() {
   _mainDeletionQueue.push_function([&]() {
       vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
       vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
-
-      for (int i = 0; i < FRAME_OVERLAP; i++)
-      {
+      for (int i = 0; i < FRAME_OVERLAP; i++) {
       vmaDestroyBuffer(_allocator,_frames[i].cameraBuffer._buffer, _frames[i].cameraBuffer._allocation);
       }
-      });
+  });
 }
