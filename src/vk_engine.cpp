@@ -16,6 +16,7 @@
 #include "vk_mem_alloc.h"
 
 
+
 constexpr bool bUseValidationLayers = true;
 
 //we want to immediately abort when there is an error. In normal engines this would give an error message to the user, or perform a dump of state.
@@ -31,37 +32,7 @@ using namespace std;
   }                                                           \
 } while (0)
 
-Material* VulkanEngine::create_material(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
-{
-  Material mat;
-  mat.pipeline = pipeline;
-  mat.pipelineLayout = layout;
-  _materials[name] = mat;
-  return &_materials[name];
-}
 
-Material* VulkanEngine::get_material(const std::string& name)
-{
-  //search for the object, and return nullptr if not found
-  auto it = _materials.find(name);
-  if (it == _materials.end()) {
-    return nullptr;
-  }
-  else {
-    return &(*it).second;
-  }
-}
-
-
-Mesh* VulkanEngine::get_mesh(const std::string& name)
-{
-  auto it = _meshes.find(name);
-  if (it == _meshes.end()) {
-    return nullptr;
-  } else {
-    return &(*it).second;
-  }
-}
 
 void VulkanEngine::init()
 {
@@ -101,87 +72,6 @@ void VulkanEngine::init()
   _isInitialized = true;
 }
 
-
-void VulkanEngine::init_scene()
-{
-  RenderObject monkey;
-  monkey.mesh = get_mesh("monkey");
-  monkey.material = get_material("defaultmesh");
-  monkey.transformMatrix = glm::mat4{ 1.0f };
-
-  _renderables.push_back(monkey);
-
-  for (int x = -20; x <= 20; x++) {
-    for (int y = -20; y <= 20; y++) {
-
-      RenderObject tri;
-      tri.mesh = get_mesh("triangle");
-      tri.material = get_material("defaultmesh");
-      glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, 0, y));
-      glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
-      tri.transformMatrix = translation * scale;
-
-      _renderables.push_back(tri);
-    }
-  }
-}
-
-
-void VulkanEngine::draw_objects(VkCommandBuffer cmd,RenderObject* first, int count)
-{
-  //make a model view matrix for rendering the object
-  //camera view
-  glm::vec3 camPos = { 0.f,-6.f,-10.f };
-
-  glm::mat4 view = glm::translate(glm::mat4(1.f), camPos);
-  //camera projection
-  glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
-  projection[1][1] *= -1;
-
-  //fill a GPU camera data struct
-  GPUCameraData camData;
-  camData.proj = projection;
-  camData.view = view;
-  camData.viewproj = projection * view;
-
-  //and copy it to the buffer
-  void* data;
-  vmaMapMemory(_allocator, get_current_frame().cameraBuffer._allocation, &data);
-  memcpy(data, &camData, sizeof(GPUCameraData));
-  vmaUnmapMemory(_allocator, get_current_frame().cameraBuffer._allocation);
-
-  Mesh* lastMesh = nullptr;
-  Material* lastMaterial = nullptr;
-  for (int i = 0; i < count; i++)
-  {
-    RenderObject& object = first[i];
-
-    //only bind the pipeline if it doesn't match with the already bound one
-    if (object.material != lastMaterial) {
-
-      vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
-      lastMaterial = object.material;
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &get_current_frame().globalDescriptor, 0, nullptr);
-    }
-
-    MeshPushConstants constants;
-    constants.render_matrix = object.transformMatrix;
-
-    //upload the mesh to the GPU via push constants
-    vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
-
-    //only bind the mesh if it's a different one from last bind
-    if (object.mesh != lastMesh) {
-      //bind the mesh vertex buffer with offset 0
-      VkDeviceSize offset = 0;
-      vkCmdBindVertexBuffers(cmd, 0, 1, &object.mesh->_vertexBuffer._buffer, &offset);
-      lastMesh = object.mesh;
-    }
-    //we can now draw
-    vkCmdDraw(cmd, object.mesh->_vertices.size(), 1, 0, 0);
-  }
-}
-
 void VulkanEngine::cleanup()
 {	
   if (_isInitialized) {
@@ -202,7 +92,8 @@ void VulkanEngine::cleanup()
   }
 }
 
-void VulkanEngine::draw() {
+void VulkanEngine::draw() 
+{
   //wait until the GPU has finished rendering the last frame. Timeout of 1 second
   VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
   VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
@@ -322,6 +213,18 @@ void VulkanEngine::run()
   }
 }
 
+FrameData& VulkanEngine::get_current_frame()
+{
+	return _frames[_frameNumber % FRAME_OVERLAP];
+}
+
+
+FrameData& VulkanEngine::get_last_frame()
+{
+	return _frames[(_frameNumber -1) % 2];
+}
+
+
 void VulkanEngine::init_vulkan()
 {
   vkb::InstanceBuilder builder;
@@ -379,17 +282,6 @@ void VulkanEngine::init_vulkan()
       vmaDestroyAllocator(_allocator);
       });
 }
-
-size_t VulkanEngine::pad_uniform_buffer_size(size_t originalSize) {
-	// Calculate required alignment based on minimum device offset alignment
-	size_t minUboAlignment = _gpuProperties.limits.minUniformBufferOffsetAlignment;
-	size_t alignedSize = originalSize;
-	if (minUboAlignment > 0) {
-		alignedSize = (alignedSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
-	}
-	return alignedSize;
-}
-
 
 void VulkanEngine::init_swapchain()
 {
@@ -608,58 +500,53 @@ void VulkanEngine::init_sync_structures() {
 
 void VulkanEngine::init_pipelines()
 {
-  VkShaderModule triangleFragShader;
-  if (!load_shader_module("../shaders/colored_triangle.frag.spv", &triangleFragShader))
-  {
-    std::cout << "Error when building the triangle fragment shader module" << std::endl;
-  }
-  else {
-    std::cout << "Triangle fragment shader succesfully loaded" << std::endl;
-  }
+	VkShaderModule colorMeshShader;
+	if (!load_shader_module("../../shaders/default_lit.frag.spv", &colorMeshShader))
+	{
+		std::cout << "Error when building the colored mesh shader" << std::endl;
+	}
 
-  VkShaderModule triangleVertexShader;
-  if (!load_shader_module("../shaders/colored_triangle.vert.spv", &triangleVertexShader))
-  {
-    std::cout << "Error when building the triangle vertex shader module" << std::endl;
-  }
-  else {
-    std::cout << "Triangle vertex shader succesfully loaded" << std::endl;
-  }
-
-  //compile colored triangle modules
-  VkShaderModule redTriangleFragShader;
-  if (!load_shader_module("../shaders/triangle.frag.spv", &redTriangleFragShader))
-  {
-    std::cout << "Error when building the triangle fragment shader module" << std::endl;
-  }
-  else {
-    std::cout << "Red Triangle fragment shader succesfully loaded" << std::endl;
-  }
-
-  VkShaderModule redTriangleVertShader;
-  if (!load_shader_module("../shaders/triangle.vert.spv", &redTriangleVertShader))
-  {
-    std::cout << "Error when building the triangle vertex shader module" << std::endl;
-  }
-  else {
-    std::cout << "Red Triangle vertex shader succesfully loaded" << std::endl;
-  }
-
-  //build the pipeline layout that controls the inputs/outputs of the shader
-  //we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
-  VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
-
-  VK_CHECK(vkCreatePipelineLayout(_device, &pipeline_layout_info, nullptr, &_trianglePipelineLayout));
+	VkShaderModule meshVertShader;
+	if (!load_shader_module("../../shaders/tri_mesh_ssbo.vert.spv", &meshVertShader))
+	{
+		std::cout << "Error when building the mesh vertex shader module" << std::endl;
+	}
 
   //build the stage-create-info for both vertex and fragment stages. This lets the pipeline know the shader modules per stage
   PipelineBuilder pipelineBuilder;
 
-  pipelineBuilder._shaderStages.push_back(
-      vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, triangleVertexShader));
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
 
-  pipelineBuilder._shaderStages.push_back(
-      vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, colorMeshShader));
 
+	//we start from just the default empty pipeline layout info
+	VkPipelineLayoutCreateInfo mesh_pipeline_layout_info = vkinit::pipeline_layout_create_info();
+
+  //setup push constants
+  VkPushConstantRange push_constant;
+  //offset 0
+  push_constant.offset = 0;
+  //size of a MeshPushConstant struct
+  push_constant.size = sizeof(MeshPushConstants);
+
+  //for the vertex shader
+  push_constant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+  mesh_pipeline_layout_info.pPushConstantRanges = &push_constant;
+  mesh_pipeline_layout_info.pushConstantRangeCount = 1;
+
+	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout };
+
+	mesh_pipeline_layout_info.setLayoutCount = 2;
+	mesh_pipeline_layout_info.pSetLayouts = setLayouts;
+
+	VkPipelineLayout meshPipLayout;
+	VK_CHECK(vkCreatePipelineLayout(_device, &mesh_pipeline_layout_info, nullptr, &meshPipLayout));
+
+	//hook the push constants layout
+	pipelineBuilder._pipelineLayout = meshPipLayout;
 
   //vertex input controls how to read vertices from vertex buffers. We arent using it yet
   pipelineBuilder._vertexInputInfo = vkinit::vertex_input_state_create_info();
@@ -688,33 +575,8 @@ void VulkanEngine::init_pipelines()
   //a single blend attachment with no blending and writing to RGBA
   pipelineBuilder._colorBlendAttachment = vkinit::color_blend_attachment_state();
 
-  //use the triangle layout we created
-  pipelineBuilder._pipelineLayout = _trianglePipelineLayout;
-
-
   //default depthtesting
   pipelineBuilder._depthStencil = vkinit::depth_stencil_create_info(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-
-  //finally build the pipeline
-  _trianglePipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
-
-  //clear the shader stages for the builder
-  pipelineBuilder._shaderStages.clear();
-
-  //add the other shaders
-  pipelineBuilder._shaderStages.push_back(
-      vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, redTriangleVertShader));
-
-  pipelineBuilder._shaderStages.push_back(
-      vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, redTriangleFragShader));
-
-
-
-  //build the red triangle pipeline
-  _redTrianglePipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
-
-
-
 
   //build the mesh pipeline
 
@@ -727,53 +589,13 @@ void VulkanEngine::init_pipelines()
   pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
   pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = vertexDescription.bindings.size();
 
-  //clear the shader stages for the builder
-  pipelineBuilder._shaderStages.clear();
+	VkPipeline meshPipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
+	create_material(meshPipeline, meshPipLayout, "defaultmesh");
 
-  //compile mesh vertex shader
-  VkShaderModule meshVertShader;
-  if (!load_shader_module("../shaders/tri_mesh_pushconstants.vert.spv", &meshVertShader))
-  {
-    std::cout << "Error when building the triangle vertex shader module" << std::endl;
-  }
-  else {
-    std::cout << "Red Triangle vertex shader succesfully loaded" << std::endl;
-  }
-
-  //add the other shaders
-  pipelineBuilder._shaderStages.push_back(
-      vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
-
-  //we start from just the default empty pipeline layout info
-  VkPipelineLayoutCreateInfo mesh_pipeline_layout_info = vkinit::pipeline_layout_create_info();
-
-  //setup push constants
-  VkPushConstantRange push_constant;
-  //offset 0
-  push_constant.offset = 0;
-  //size of a MeshPushConstant struct
-  push_constant.size = sizeof(MeshPushConstants);
-  //for the vertex shader
-  push_constant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-  mesh_pipeline_layout_info.pPushConstantRanges = &push_constant;
-  mesh_pipeline_layout_info.pushConstantRangeCount = 1;
-
-  VK_CHECK(vkCreatePipelineLayout(_device, &mesh_pipeline_layout_info, nullptr, &_meshPipelineLayout));
-
-  //hook the push constants layout
-  pipelineBuilder._pipelineLayout = _meshPipelineLayout;
-  //build the mesh triangle pipeline
-  _meshPipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
-  create_material(_meshPipeline, _meshPipelineLayout, "defaultmesh");
-
-  vkDestroyShaderModule(_device, meshVertShader, nullptr);
 
   _mainDeletionQueue.push_function([=]() {
-      vkDestroyPipeline(_device, _meshPipeline, nullptr);
-
-      vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
-      vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
+      vkDestroyPipeline(_device, meshPipeline, nullptr);
+      vkDestroyPipelineLayout(_device, meshPipLayout, nullptr);
       });
 }
 
@@ -880,6 +702,7 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass)
 void VulkanEngine::load_meshes()
 {
   //make the array 3 vertices long
+  Mesh _triangleMesh{};
   _triangleMesh._vertices.resize(3);
 
   //vertex positions
@@ -894,6 +717,7 @@ void VulkanEngine::load_meshes()
   //we dont care about the vertex normals
 
   //load the monkey
+  Mesh _monkey_mesh{};
   _monkey_mesh.load_from_obj("../assets/monkey_smooth.obj");
 
   upload_mesh(_triangleMesh);
@@ -941,9 +765,143 @@ void VulkanEngine::upload_mesh(Mesh& mesh)
   vmaUnmapMemory(_allocator, mesh._vertexBuffer._allocation);
 }
 
-FrameData& VulkanEngine::get_current_frame()
+Material* VulkanEngine::create_material(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
 {
-  return _frames[_frameNumber % FRAME_OVERLAP];
+  Material mat;
+  mat.pipeline = pipeline;
+  mat.pipelineLayout = layout;
+  _materials[name] = mat;
+  return &_materials[name];
+}
+
+Material* VulkanEngine::get_material(const std::string& name)
+{
+  //search for the object, and return nullptr if not found
+  auto it = _materials.find(name);
+  if (it == _materials.end()) {
+    return nullptr;
+  }
+  else {
+    return &(*it).second;
+  }
+}
+
+
+Mesh* VulkanEngine::get_mesh(const std::string& name)
+{
+  auto it = _meshes.find(name);
+  if (it == _meshes.end()) {
+    return nullptr;
+  } else {
+    return &(*it).second;
+  }
+}
+
+void VulkanEngine::draw_objects(VkCommandBuffer cmd,RenderObject* first, int count)
+{
+  //make a model view matrix for rendering the object
+  //camera view
+  glm::vec3 camPos = { 0.f,-6.f,-10.f };
+
+  glm::mat4 view = glm::translate(glm::mat4(1.f), camPos);
+  //camera projection
+  glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
+  projection[1][1] *= -1;
+
+  //fill a GPU camera data struct
+  GPUCameraData camData;
+  camData.proj = projection;
+  camData.view = view;
+  camData.viewproj = projection * view;
+
+  //and copy it to the buffer
+  void* data;
+  vmaMapMemory(_allocator, get_current_frame().cameraBuffer._allocation, &data);
+  memcpy(data, &camData, sizeof(GPUCameraData));
+  vmaUnmapMemory(_allocator, get_current_frame().cameraBuffer._allocation);
+
+	float framed = (_frameNumber / 120.f);
+	_sceneParameters.ambientColor = { sin(framed),0,cos(framed),1 };
+
+	char* sceneData;
+	vmaMapMemory(_allocator, _sceneParameterBuffer._allocation , (void**)&sceneData);
+	int frameIndex = _frameNumber % FRAME_OVERLAP;
+	sceneData += pad_uniform_buffer_size(sizeof(GPUSceneData)) * frameIndex;
+	memcpy(sceneData, &_sceneParameters, sizeof(GPUSceneData));
+	vmaUnmapMemory(_allocator, _sceneParameterBuffer._allocation);
+
+	void* objectData;
+	vmaMapMemory(_allocator, get_current_frame().objectBuffer._allocation, &objectData);
+	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;
+	for (int i = 0; i < count; i++)
+	{
+		RenderObject& object = first[i];
+		objectSSBO[i].modelMatrix = object.transformMatrix;
+	}
+	vmaUnmapMemory(_allocator, get_current_frame().objectBuffer._allocation);
+
+  Mesh* lastMesh = nullptr;
+  Material* lastMaterial = nullptr;
+  for (int i = 0; i < count; i++)
+  {
+    RenderObject& object = first[i];
+
+    //only bind the pipeline if it doesn't match with the already bound one
+    if (object.material != lastMaterial) {
+      vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
+      lastMaterial = object.material;
+
+			uint32_t uniform_offset = pad_uniform_buffer_size(sizeof(GPUSceneData)) * frameIndex;
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &get_current_frame().globalDescriptor, 1, &uniform_offset);
+
+			//object data descriptor
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 1, 1, &get_current_frame().objectDescriptor, 0, nullptr);
+    }
+
+		glm::mat4 model = object.transformMatrix;
+		//final render matrix, that we are calculating on the cpu
+		glm::mat4 mesh_matrix = model;
+
+    MeshPushConstants constants;
+    constants.render_matrix = object.transformMatrix;
+
+    //upload the mesh to the GPU via push constants
+    vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
+
+    //only bind the mesh if it's a different one from last bind
+    if (object.mesh != lastMesh) {
+      //bind the mesh vertex buffer with offset 0
+      VkDeviceSize offset = 0;
+      vkCmdBindVertexBuffers(cmd, 0, 1, &object.mesh->_vertexBuffer._buffer, &offset);
+      lastMesh = object.mesh;
+    }
+    //we can now draw
+    vkCmdDraw(cmd, object.mesh->_vertices.size(), 1, 0, 0);
+  }
+}
+
+void VulkanEngine::init_scene()
+{
+  RenderObject monkey;
+  monkey.mesh = get_mesh("monkey");
+  monkey.material = get_material("defaultmesh");
+  monkey.transformMatrix = glm::mat4{ 1.0f };
+
+  _renderables.push_back(monkey);
+
+  for (int x = -20; x <= 20; x++) {
+    for (int y = -20; y <= 20; y++) {
+
+      RenderObject tri;
+      tri.mesh = get_mesh("triangle");
+      tri.material = get_material("defaultmesh");
+      glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, 0, y));
+      glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
+      tri.transformMatrix = translation * scale;
+
+      _renderables.push_back(tri);
+    }
+  }
 }
 
 AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) {
@@ -969,34 +927,24 @@ AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags
   return newBuffer;
 }
 
+size_t VulkanEngine::pad_uniform_buffer_size(size_t originalSize) {
+	// Calculate required alignment based on minimum device offset alignment
+	size_t minUboAlignment = _gpuProperties.limits.minUniformBufferOffsetAlignment;
+	size_t alignedSize = originalSize;
+	if (minUboAlignment > 0) {
+		alignedSize = (alignedSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
+	}
+	return alignedSize;
+}
+
 void VulkanEngine::init_descriptors() {
-  //information about the binding.
-  VkDescriptorSetLayoutBinding camBufferBinding = {};
-  camBufferBinding.binding = 0;
-  camBufferBinding.descriptorCount = 1;
-  // it's a uniform buffer binding
-  camBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-
-  // we use it from the vertex shader
-  camBufferBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-  VkDescriptorSetLayoutCreateInfo setinfo = {};
-  setinfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  setinfo.pNext = nullptr;
-
-  //we are going to have 1 binding
-  setinfo.bindingCount = 1;
-  //no flags
-  setinfo.flags = 0;
-  //point to the camera buffer binding
-  setinfo.pBindings = &camBufferBinding;
-
-  vkCreateDescriptorSetLayout(_device, &setinfo, nullptr, &_globalSetLayout);
 
   //create a descriptor pool that will hold 10 uniform buffers
   std::vector<VkDescriptorPoolSize> sizes =
   {
-    { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 }
+    { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 }
   };
 
   VkDescriptorPoolCreateInfo pool_info = {};
@@ -1006,11 +954,44 @@ void VulkanEngine::init_descriptors() {
   pool_info.poolSizeCount = (uint32_t)sizes.size();
   pool_info.pPoolSizes = sizes.data();
 
-  vkCreateDescriptorSetLayout(_device, &setinfo, nullptr, &_globalSetLayout);
   vkCreateDescriptorPool(_device, &pool_info, nullptr, &_descriptorPool);
+
+	VkDescriptorSetLayoutBinding cameraBind = vkinit::descriptorset_layout_binding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,VK_SHADER_STAGE_VERTEX_BIT,0);
+	VkDescriptorSetLayoutBinding sceneBind = vkinit::descriptorset_layout_binding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 1);
+	
+	VkDescriptorSetLayoutBinding bindings[] = { cameraBind,sceneBind };
+
+	VkDescriptorSetLayoutCreateInfo setinfo = {};
+	setinfo.bindingCount = 2;
+	setinfo.flags = 0;
+	setinfo.pNext = nullptr;
+	setinfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	setinfo.pBindings = bindings;
+
+	vkCreateDescriptorSetLayout(_device, &setinfo, nullptr, &_globalSetLayout);
+
+	VkDescriptorSetLayoutBinding objectBind = vkinit::descriptorset_layout_binding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
+
+	VkDescriptorSetLayoutCreateInfo set2info = {};
+	set2info.bindingCount = 1;
+	set2info.flags = 0;
+	set2info.pNext = nullptr;
+	set2info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	set2info.pBindings = &objectBind;
+
+	vkCreateDescriptorSetLayout(_device, &set2info, nullptr, &_objectSetLayout);
+
+
+	const size_t sceneParamBufferSize = FRAME_OVERLAP * pad_uniform_buffer_size(sizeof(GPUSceneData));
+
+	_sceneParameterBuffer = create_buffer(sceneParamBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
 
   for (int i = 0; i < FRAME_OVERLAP; i++) {
     _frames[i].cameraBuffer = create_buffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+    const int MAX_OBJECTS = 10000;
+		_frames[i].objectBuffer = create_buffer(sizeof(GPUObjectData) * MAX_OBJECTS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
     //allocate one descriptor set for each frame
     VkDescriptorSetAllocateInfo allocInfo ={};
@@ -1025,38 +1006,50 @@ void VulkanEngine::init_descriptors() {
 
     vkAllocateDescriptorSets(_device, &allocInfo, &_frames[i].globalDescriptor);
 
-    //information about the buffer we want to point at in the descriptor
-    VkDescriptorBufferInfo binfo;
-    //it will be the camera buffer
-    binfo.buffer = _frames[i].cameraBuffer._buffer;
-    //at 0 offset
-    binfo.offset = 0;
-    //of the size of a camera data struct
-    binfo.range = sizeof(GPUCameraData);
+		VkDescriptorSetAllocateInfo objectSetAlloc = {};
+		objectSetAlloc.pNext = nullptr;
+		objectSetAlloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		objectSetAlloc.descriptorPool = _descriptorPool;
+		objectSetAlloc.descriptorSetCount = 1;
+		objectSetAlloc.pSetLayouts = &_objectSetLayout;
 
-    VkWriteDescriptorSet setWrite = {};
-    setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    setWrite.pNext = nullptr;
+		vkAllocateDescriptorSets(_device, &objectSetAlloc, &_frames[i].objectDescriptor);
 
-    //we are going to write into binding number 0
-    setWrite.dstBinding = 0;
-    //of the global descriptor
-    setWrite.dstSet = _frames[i].globalDescriptor;
+		VkDescriptorBufferInfo cameraInfo;
+		cameraInfo.buffer = _frames[i].cameraBuffer._buffer;
+		cameraInfo.offset = 0;
+		cameraInfo.range = sizeof(GPUCameraData);
 
-    setWrite.descriptorCount = 1;
-    //and the type is uniform buffer
-    setWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    setWrite.pBufferInfo = &binfo;
+		VkDescriptorBufferInfo sceneInfo;
+		sceneInfo.buffer = _sceneParameterBuffer._buffer;
+		sceneInfo.offset = 0;
+		sceneInfo.range = sizeof(GPUSceneData);
 
-    vkUpdateDescriptorSets(_device, 1, &setWrite, 0, nullptr);
+		VkDescriptorBufferInfo objectBufferInfo;
+		objectBufferInfo.buffer = _frames[i].objectBuffer._buffer;
+		objectBufferInfo.offset = 0;
+		objectBufferInfo.range = sizeof(GPUObjectData) * MAX_OBJECTS;
+
+		VkWriteDescriptorSet cameraWrite = vkinit::write_descriptor_buffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _frames[i].globalDescriptor,&cameraInfo,0);
+		
+		VkWriteDescriptorSet sceneWrite = vkinit::write_descriptor_buffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, _frames[i].globalDescriptor, &sceneInfo, 1);
+
+		VkWriteDescriptorSet objectWrite = vkinit::write_descriptor_buffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, _frames[i].objectDescriptor, &objectBufferInfo, 0);
+
+		VkWriteDescriptorSet setWrites[] = { cameraWrite,sceneWrite,objectWrite };
+		vkUpdateDescriptorSets(_device, 3, setWrites, 0, nullptr);
   }
 
   // add descriptor set layout to deletion queues
   _mainDeletionQueue.push_function([&]() {
+      vmaDestroyBuffer(_allocator, _sceneParameterBuffer._buffer, _sceneParameterBuffer._allocation);
+      vkDestroyDescriptorSetLayout(_device, _objectSetLayout, nullptr);
       vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
+
       vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
       for (int i = 0; i < FRAME_OVERLAP; i++) {
-      vmaDestroyBuffer(_allocator,_frames[i].cameraBuffer._buffer, _frames[i].cameraBuffer._allocation);
+        vmaDestroyBuffer(_allocator,_frames[i].cameraBuffer._buffer, _frames[i].cameraBuffer._allocation);
+        vmaDestroyBuffer(_allocator, _frames[i].objectBuffer._buffer, _frames[i].objectBuffer._allocation);
       }
   });
 }
