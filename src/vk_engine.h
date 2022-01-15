@@ -25,6 +25,12 @@ public:
 	VkPipeline build_pipeline(VkDevice device, VkRenderPass pass);
 };
 
+struct UploadContext {
+    VkFence _uploadFence;
+    VkCommandPool _commandPool;
+    VkCommandBuffer _commandBuffer;
+};
+
 struct DeletionQueue {
 	std::deque<std::function<void()>> deletors;
 
@@ -97,6 +103,7 @@ constexpr unsigned int FRAME_OVERLAP = 2;
 class VulkanEngine {
 public:
 
+  UploadContext _uploadContext;
 	bool _isInitialized{ false };
 	int _frameNumber {0};
 	int _selectedShader{ 0 };
@@ -209,4 +216,5 @@ private:
 	void load_meshes();
 
 	void upload_mesh(Mesh& mesh);
+  void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 };
