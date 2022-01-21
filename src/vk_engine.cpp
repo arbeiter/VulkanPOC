@@ -731,7 +731,7 @@ void VulkanEngine::load_meshes()
 
 	//load the monkey
 	Mesh monkeyMesh{};
-	monkeyMesh.load_from_obj("../assets/monkey_smooth.obj");
+	monkeyMesh.load_from_obj("../assets/cube.obj");
 
 	upload_mesh(triMesh);
 	upload_mesh(monkeyMesh);
