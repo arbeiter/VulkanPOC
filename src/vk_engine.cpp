@@ -68,109 +68,63 @@ void VulkanEngine::init()
 void VulkanEngine::cleanup()
 {	
 	if (_isInitialized) {
-		
 		//make sure the gpu has stopped doing its things
 		vkDeviceWaitIdle(_device);
-
 		_mainDeletionQueue.flush();
-
 		vkDestroySurfaceKHR(_instance, _surface, nullptr);
-
 		vkDestroyDevice(_device, nullptr);
 		vkb::destroy_debug_utils_messenger(_instance, _debug_messenger);
 		vkDestroyInstance(_instance, nullptr);
-
 		SDL_DestroyWindow(_window);
 	}
 }
 
 void VulkanEngine::draw()
 {
-	
-	//wait until the gpu has finished rendering the last frame. Timeout of 1 second
 	VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
 	VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
-
-	//now that we are sure that the commands finished executing, we can safely reset the command buffer to begin recording again.
 	VK_CHECK(vkResetCommandBuffer(get_current_frame()._mainCommandBuffer, 0));
 
-	//request image from the swapchain
 	uint32_t swapchainImageIndex;
 	VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1000000000, get_current_frame()._presentSemaphore, nullptr, &swapchainImageIndex));
 
-	//naming it cmd for shorter writing
 	VkCommandBuffer cmd = get_current_frame()._mainCommandBuffer;
-
-	//begin the command buffer recording. We will use this command buffer exactly once, so we want to let vulkan know that
 	VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-	//make a clear-color from frame number. This will flash with a 120 frame period.
 	VkClearValue clearValue;
 	float flash = abs(sin(_frameNumber / 120.f));
 	clearValue.color = { { 0.0f, 0.0f, flash, 1.0f } };
-
-	//clear depth at 1
 	VkClearValue depthClear;
 	depthClear.depthStencil.depth = 1.f;
 
-	//start the main renderpass. 
-	//We will use the clear color from above, and the framebuffer of the index the swapchain gave us
 	VkRenderPassBeginInfo rpInfo = vkinit::renderpass_begin_info(_renderPass, _windowExtent, _framebuffers[swapchainImageIndex]);
-
-	//connect clear values
 	rpInfo.clearValueCount = 2;
-
 	VkClearValue clearValues[] = { clearValue, depthClear };
-
 	rpInfo.pClearValues = &clearValues[0];
-	
 	vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
-
 	draw_objects(cmd, _renderables.data(), _renderables.size());	
 
-	//finalize the render pass
 	vkCmdEndRenderPass(cmd);
-	//finalize the command buffer (we can no longer add commands, but it can now be executed)
 	VK_CHECK(vkEndCommandBuffer(cmd));
-
-	//prepare the submission to the queue. 
-	//we want to wait on the _presentSemaphore, as that semaphore is signaled when the swapchain is ready
-	//we will signal the _renderSemaphore, to signal that rendering has finished
 
 	VkSubmitInfo submit = vkinit::submit_info(&cmd);
 	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-
 	submit.pWaitDstStageMask = &waitStage;
-
 	submit.waitSemaphoreCount = 1;
 	submit.pWaitSemaphores = &get_current_frame()._presentSemaphore;
-
 	submit.signalSemaphoreCount = 1;
 	submit.pSignalSemaphores = &get_current_frame()._renderSemaphore;
-
-	//submit command buffer to the queue and execute it.
-	// _renderFence will now block until the graphic commands finish execution
 	VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, get_current_frame()._renderFence));
 
-	//prepare present
-	// this will put the image we just rendered to into the visible window.
-	// we want to wait on the _renderSemaphore for that, 
-	// as its necessary that drawing commands have finished before the image is displayed to the user
 	VkPresentInfoKHR presentInfo = vkinit::present_info();
-
 	presentInfo.pSwapchains = &_swapchain;
 	presentInfo.swapchainCount = 1;
-
 	presentInfo.pWaitSemaphores = &get_current_frame()._renderSemaphore;
 	presentInfo.waitSemaphoreCount = 1;
-
 	presentInfo.pImageIndices = &swapchainImageIndex;
-
 	VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
 
-	//increase the number of frames drawn
 	_frameNumber++;
 }
 
@@ -221,61 +175,37 @@ FrameData& VulkanEngine::get_last_frame()
 void VulkanEngine::init_vulkan()
 {
 	vkb::InstanceBuilder builder;
-
-	//make the vulkan instance, with basic debug features
 	auto inst_ret = builder.set_app_name("Example Vulkan Application")
 		.request_validation_layers(bUseValidationLayers)
 		.use_default_debug_messenger()
 		.require_api_version(1, 1, 0)		
 		.build();
-
 	vkb::Instance vkb_inst = inst_ret.value();
-
-	//grab the instance 
 	_instance = vkb_inst.instance;
 	_debug_messenger = vkb_inst.debug_messenger;
-
 	SDL_Vulkan_CreateSurface(_window, _instance, &_surface);
-
-	//use vkbootstrap to select a gpu. 
-	//We want a gpu that can write to the SDL surface and supports vulkan 1.2
 	vkb::PhysicalDeviceSelector selector{ vkb_inst };
 	vkb::PhysicalDevice physicalDevice = selector
 		.set_minimum_version(1, 1)
 		.set_surface(_surface)
 		.select()
 		.value();
-
-	//create the final vulkan device
-
 	vkb::DeviceBuilder deviceBuilder{ physicalDevice };
-
 	vkb::Device vkbDevice = deviceBuilder.build().value();
-
-	// Get the VkDevice handle used in the rest of a vulkan application
 	_device = vkbDevice.device;
 	_chosenGPU = physicalDevice.physical_device;
-
-	// use vkbootstrap to get a Graphics queue
 	_graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
-
 	_graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
-
-	//initialize the memory allocator
 	VmaAllocatorCreateInfo allocatorInfo = {};
 	allocatorInfo.physicalDevice = _chosenGPU;
 	allocatorInfo.device = _device;
 	allocatorInfo.instance = _instance;
 	vmaCreateAllocator(&allocatorInfo, &_allocator);
-
 	_mainDeletionQueue.push_function([&]() {
 		vmaDestroyAllocator(_allocator);
 		});
-
 	vkGetPhysicalDeviceProperties(_chosenGPU, &_gpuProperties);
-
 	std::cout << "The gpu has a minimum buffer alignement of " << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
-
 }
 
 void VulkanEngine::init_swapchain()
@@ -476,32 +406,22 @@ void VulkanEngine::init_sync_structures()
 	//and 2 semaphores to syncronize rendering with swapchain
 	//we want the fence to start signalled so we can wait on it on the first frame
 	VkFenceCreateInfo fenceCreateInfo = vkinit::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
-
 	VkSemaphoreCreateInfo semaphoreCreateInfo = vkinit::semaphore_create_info();
-
 	for (int i = 0; i < FRAME_OVERLAP; i++) {
-
-	
-
-	VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_frames[i]._renderFence));
-
-	//enqueue the destruction of the fence
-	_mainDeletionQueue.push_function([=]() {
-		vkDestroyFence(_device, _frames[i]._renderFence, nullptr);
-		});
-
-
-	VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._presentSemaphore));
-	VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._renderSemaphore));
-
-	//enqueue the destruction of semaphores
-	_mainDeletionQueue.push_function([=]() {
-		vkDestroySemaphore(_device, _frames[i]._presentSemaphore, nullptr);
-		vkDestroySemaphore(_device, _frames[i]._renderSemaphore, nullptr);
-		});
+    VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_frames[i]._renderFence));
+    //enqueue the destruction of the fence
+    _mainDeletionQueue.push_function([=]() {
+      vkDestroyFence(_device, _frames[i]._renderFence, nullptr);
+      });
+    VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._presentSemaphore));
+    VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._renderSemaphore));
+    //enqueue the destruction of semaphores
+    _mainDeletionQueue.push_function([=]() {
+      vkDestroySemaphore(_device, _frames[i]._presentSemaphore, nullptr);
+      vkDestroySemaphore(_device, _frames[i]._renderSemaphore, nullptr);
+      });
 	}
 }
-
 
 void VulkanEngine::init_pipelines()
 {
@@ -520,9 +440,6 @@ void VulkanEngine::init_pipelines()
 	
 	//build the stage-create-info for both vertex and fragment stages. This lets the pipeline know the shader modules per stage
 	PipelineBuilder pipelineBuilder;
-
-	pipelineBuilder._shaderStages.push_back(
-		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
 
 	pipelineBuilder._shaderStages.push_back(
 		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, colorMeshShader));
@@ -733,11 +650,8 @@ void VulkanEngine::load_meshes()
 	Mesh monkeyMesh{};
 	monkeyMesh.load_from_obj("../assets/cube.obj");
 
-	upload_mesh(triMesh);
 	upload_mesh(monkeyMesh);
-
 	_meshes["monkey"] = monkeyMesh;
-	_meshes["triangle"] = triMesh;
 }
 
 void VulkanEngine::upload_mesh(Mesh& mesh)
@@ -958,6 +872,11 @@ size_t VulkanEngine::pad_uniform_buffer_size(size_t originalSize)
 
 void VulkanEngine::init_descriptors()
 {
+  /*
+    
+
+
+   */
 	//create a descriptor pool that will hold 10 uniform buffers
 	std::vector<VkDescriptorPoolSize> sizes =
 	{
@@ -1055,17 +974,14 @@ void VulkanEngine::init_descriptors()
 	}
 
 	_mainDeletionQueue.push_function([&]() {
-
 		vmaDestroyBuffer(_allocator, _sceneParameterBuffer._buffer, _sceneParameterBuffer._allocation);
 		vkDestroyDescriptorSetLayout(_device, _objectSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
-
 		vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
 
 		for (int i = 0; i < FRAME_OVERLAP; i++)
 		{
 			vmaDestroyBuffer(_allocator,_frames[i].cameraBuffer._buffer, _frames[i].cameraBuffer._allocation);
-
 			vmaDestroyBuffer(_allocator, _frames[i].objectBuffer._buffer, _frames[i].objectBuffer._allocation);
 		}
 	});
