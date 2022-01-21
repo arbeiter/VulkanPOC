@@ -7,9 +7,7 @@ add_executable(SDLTestApp
     vk_initializers.cpp
     vk_initializers.h
     vk_mesh.h
-    vk_mesh.cpp
-    vk_textures.cpp
-    vk_textures.h)
+    vk_mesh.cpp)
 
 set_property(TARGET SDLTestApp PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:SDLTestApp>")
 
