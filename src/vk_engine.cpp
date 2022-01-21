@@ -916,20 +916,6 @@ void VulkanEngine::init_scene()
 	monkey.transformMatrix = glm::mat4{ 1.0f };
 
 	_renderables.push_back(monkey);
-
-	for (int x = -20; x <= 20; x++) {
-		for (int y = -20; y <= 20; y++) {
-
-			RenderObject tri;
-			tri.mesh = get_mesh("triangle");
-			tri.material = get_material("defaultmesh");
-			glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, 0, y));
-			glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
-			tri.transformMatrix = translation * scale;
-
-			_renderables.push_back(tri);
-		}
-	}
 }
 
 AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage)
