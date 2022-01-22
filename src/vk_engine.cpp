@@ -423,6 +423,7 @@ void VulkanEngine::init_sync_structures()
 	}
 }
 
+// Things to change
 void VulkanEngine::init_pipelines()
 {
 	VkShaderModule colorMeshShader;
@@ -443,6 +444,8 @@ void VulkanEngine::init_pipelines()
 
 	pipelineBuilder._shaderStages.push_back(
 		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, colorMeshShader));
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
 
 
 	//we start from just the default empty pipeline layout info
