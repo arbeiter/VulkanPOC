@@ -87,120 +87,69 @@ void VulkanEngine::cleanup()
 
 void VulkanEngine::draw()
 {
-	//wait until the gpu has finished rendering the last frame. Timeout of 1 second
 	VK_CHECK(vkWaitForFences(_device, 1, &_renderFence, true, 1000000000));
 	VK_CHECK(vkResetFences(_device, 1, &_renderFence));
-
-	//now that we are sure that the commands finished executing, we can safely reset the command buffer to begin recording again.
 	VK_CHECK(vkResetCommandBuffer(_mainCommandBuffer, 0));
 
-	//request image from the swapchain
 	uint32_t swapchainImageIndex;
 	VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1000000000, _presentSemaphore, nullptr, &swapchainImageIndex));
 
-	//naming it cmd for shorter writing
 	VkCommandBuffer cmd = _mainCommandBuffer;
-
-	//begin the command buffer recording. We will use this command buffer exactly once, so we want to let vulkan know that
 	VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-	//make a clear-color from frame number. This will flash with a 120 frame period.
 	VkClearValue clearValue;
 	float flash = abs(sin(_frameNumber / 120.f));
 	clearValue.color = { { 0.0f, 0.0f, flash, 1.0f } };
 
-	//clear depth at 1
 	VkClearValue depthClear;
 	depthClear.depthStencil.depth = 1.f;
-
-	//start the main renderpass. 
-	//We will use the clear color from above, and the framebuffer of the index the swapchain gave us
 	VkRenderPassBeginInfo rpInfo = vkinit::renderpass_begin_info(_renderPass, _windowExtent, _framebuffers[swapchainImageIndex]);
 
-	//connect clear values
 	rpInfo.clearValueCount = 2;
-
 	VkClearValue clearValues[] = { clearValue, depthClear };
-
 	rpInfo.pClearValues = &clearValues[0];
 
 	vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
 
-	//bind the mesh vertex buffer with offset 0
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(cmd, 0, 1, &_monkeyMesh._vertexBuffer._buffer, &offset);
 
-	//make a model view matrix for rendering the object
-	//camera position
-	glm::vec3 camPos = { 0.f,0.f,-2.f };
-
+	glm::vec3 camPos = { 0.f, 0.f, -20.f };
 	glm::mat4 view = glm::translate(glm::mat4(1.f), camPos);
-	//camera projection
 	glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
 	projection[1][1] *= -1;
-	//model rotation
 	glm::mat4 model = glm::rotate(glm::mat4{ 1.0f }, glm::radians(_frameNumber * 0.4f), glm::vec3(0, 1, 0));
-
-	//calculate final mesh matrix
 	glm::mat4 mesh_matrix = projection * view * model;
 
 	MeshPushConstants constants;
 	constants.render_matrix = mesh_matrix;
-
-	//upload the matrix to the gpu via pushconstants
 	vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
 
-	
-
-	//we can now draw the mesh
 	vkCmdDraw(cmd, _monkeyMesh._vertices.size(), 1, 0, 0);
 
-	//finalize the render pass
 	vkCmdEndRenderPass(cmd);
-	//finalize the command buffer (we can no longer add commands, but it can now be executed)
 	VK_CHECK(vkEndCommandBuffer(cmd));
-
-	//prepare the submission to the queue. 
-	//we want to wait on the _presentSemaphore, as that semaphore is signaled when the swapchain is ready
-	//we will signal the _renderSemaphore, to signal that rendering has finished
 
 	VkSubmitInfo submit = vkinit::submit_info(&cmd);
 	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-
 	submit.pWaitDstStageMask = &waitStage;
-
 	submit.waitSemaphoreCount = 1;
 	submit.pWaitSemaphores = &_presentSemaphore;
-
 	submit.signalSemaphoreCount = 1;
 	submit.pSignalSemaphores = &_renderSemaphore;
 
-	//submit command buffer to the queue and execute it.
-	// _renderFence will now block until the graphic commands finish execution
 	VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, _renderFence));
 
-	//prepare present
-	// this will put the image we just rendered to into the visible window.
-	// we want to wait on the _renderSemaphore for that, 
-	// as its necessary that drawing commands have finished before the image is displayed to the user
 	VkPresentInfoKHR presentInfo = vkinit::present_info();
-
 	presentInfo.pSwapchains = &_swapchain;
 	presentInfo.swapchainCount = 1;
-
 	presentInfo.pWaitSemaphores = &_renderSemaphore;
 	presentInfo.waitSemaphoreCount = 1;
-
 	presentInfo.pImageIndices = &swapchainImageIndex;
 
 	VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
-
-	//increase the number of frames drawn
 	_frameNumber++;
 }
 
@@ -616,6 +565,12 @@ void VulkanEngine::init_pipelines()
 	pipelineBuilder._vertexInputInfo = vkinit::vertex_input_state_create_info();
 	pipelineBuilder._inputAssembly = vkinit::input_assembly_create_info(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
+	VertexInputDescription vertexDescription = Vertex::get_vertex_description();
+	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
+	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertexDescription.attributes.size();
+	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
+	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = vertexDescription.bindings.size();
+
 	//build viewport and scissor from the swapchain extents
 	pipelineBuilder._viewport.x = 0.0f;
 	pipelineBuilder._viewport.y = 0.0f;
@@ -630,15 +585,6 @@ void VulkanEngine::init_pipelines()
 	pipelineBuilder._multisampling = vkinit::multisampling_state_create_info();
 	pipelineBuilder._colorBlendAttachment = vkinit::color_blend_attachment_state();
 	pipelineBuilder._depthStencil = vkinit::depth_stencil_create_info(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-
-	VertexInputDescription vertexDescription = Vertex::get_vertex_description();
-
-	//connect the pipeline builder vertex input info to the one we get from Vertex
-	pipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
-	pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertexDescription.attributes.size();
-
-	pipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
-	pipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = vertexDescription.bindings.size();
 
 	//clear the shader stages for the builder
 	pipelineBuilder._shaderStages.clear();
@@ -681,24 +627,7 @@ void VulkanEngine::init_pipelines()
 
 void VulkanEngine::load_meshes()
 {
-	//make the array 3 vertices long
-	_triangleMesh._vertices.resize(3);
-
-	//vertex positions
-	_triangleMesh._vertices[0].position = { 1.f,1.f, 0.0f };
-	_triangleMesh._vertices[1].position = { -1.f,1.f, 0.0f };
-	_triangleMesh._vertices[2].position = { 0.f,-1.f, 0.0f };
-
-	//vertex colors, all green
-	_triangleMesh._vertices[0].color = { 0.f,1.f, 0.0f }; //pure green
-	_triangleMesh._vertices[1].color = { 0.f,1.f, 0.0f }; //pure green
-	_triangleMesh._vertices[2].color = { 0.f,1.f, 0.0f }; //pure green
-	//we dont care about the vertex normals
-
-	//load the monkey
 	_monkeyMesh.load_from_obj("../assets/cube.obj");
-
-	upload_mesh(_triangleMesh);
 	upload_mesh(_monkeyMesh);
 }
 
@@ -713,7 +642,6 @@ void VulkanEngine::upload_mesh(Mesh& mesh)
 	bufferInfo.size = mesh._vertices.size() * sizeof(Vertex);
 	//this buffer is going to be used as a Vertex Buffer
 	bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-
 
 	//let the VMA library know that this data should be writeable by CPU, but also readable by GPU
 	VmaAllocationCreateInfo vmaallocInfo = {};
@@ -734,8 +662,6 @@ void VulkanEngine::upload_mesh(Mesh& mesh)
 	//copy vertex data
 	void* data;
 	vmaMapMemory(_allocator, mesh._vertexBuffer._allocation, &data);
-
 	memcpy(data, mesh._vertices.data(), mesh._vertices.size() * sizeof(Vertex));
-
 	vmaUnmapMemory(_allocator, mesh._vertexBuffer._allocation);
 }
