@@ -1,8 +1,6 @@
 ﻿// vulkan_guide.h : Include file for standard system include files,
 // or project specific include files.
-
 #pragma once
-
 #include <string>
 #include <vk_types.h>
 #include <vector>
@@ -13,9 +11,16 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 
+
+struct GPUCameraData{
+	glm::mat4 projection;
+	glm::mat4 view;
+	glm::mat4 model;
+};
+
+
 class PipelineBuilder {
 public:
-
 	std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
 	VkPipelineVertexInputStateCreateInfo _vertexInputInfo;
 	VkPipelineInputAssemblyStateCreateInfo _inputAssembly;
@@ -69,12 +74,15 @@ public:
 	VkDebugUtilsMessengerEXT _debug_messenger;
 	VkPhysicalDevice _chosenGPU;
 	VkDevice _device;
+	AllocatedBuffer cameraBuffer;
 
 	VkSemaphore _presentSemaphore, _renderSemaphore;
 	VkFence _renderFence;
 
 	VkQueue _graphicsQueue;
 	uint32_t _graphicsQueueFamily;
+
+	VkDescriptorSetLayout descriptorSetLayout;
 
 	VkCommandPool _commandPool;
 	VkCommandBuffer _mainCommandBuffer;
@@ -103,6 +111,8 @@ public:
 	VkPipelineLayout _meshPipelineLayout;
 
 	VmaAllocator _allocator; //vma lib allocator
+  VkDescriptorSet descriptorSet;
+  VkDescriptorPool descriptorPool;
 
 	//depth resources
 	VkImageView _depthImageView;
@@ -124,6 +134,7 @@ public:
 	void run();
 
 private:
+  void setupDescriptors();
 
 	void init_vulkan();
 
@@ -138,6 +149,8 @@ private:
 	void init_sync_structures();
 
 	void init_pipelines();
+
+  AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 
 	//loads a shader module from a spir-v file. Returns false if it errors
 	bool load_shader_module(const char* filePath, VkShaderModule* outShaderModule);
