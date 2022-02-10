@@ -1,46 +1,108 @@
+### Todo:
+
+- Frame dependence
+- Scene data -> dynamic descriptors
+- Camera data
+
 ### Current
 
-#### Ways of uploading data to the GPU
 
-1. Obj: Load obj, upload to the GPU using descriptor sets, simple shading.
-2. Generated Mesh with hardcoded vertices and index buffer(Current)
 
-#### Generated Mesh upload plan:
 
-Use static descriptor sets for this
+#### Experiment 2: Triangle upload with scenes
 
+1.  Add renderables
 ```
-Create a list of vertices 
-Create a vertex buffer
+Mesh: 
+  getMesh, create_mesh
+Material: pipeline, pipelineLayout
+  getMaterial, create_material
+struct RenderObject {
+	Mesh* mesh;
+	Material* material;
+	glm::mat4 transformMatrix;
+};
 
-VkMesh:
-  Vertices -> pos, normal, color, uv
-  AllocatedBuffer
+struct Material {
+	VkPipeline pipeline;
+	VkPipelineLayout pipelineLayout;
+};
 
-Upload Mesh
-  Allocate vertex buffer
-  Use VMA to create the buffer
+std::vector<RenderObject> _renderables;
+std::unordered_map<std::string, Material> _materials;
+std::unordered_map<std::string, Mesh> _meshes;
 
-Set the vertex input layout in the pipeline
-Init_Pipelines:
-  Build mesh pipeline
-  Compile Mesh Vertex Shader
-  Add the other shaders
- 
-Draw:
-  CmdBeginRenderPass 
-  CmdBindPipeline
-  BindVertexBuffers
-  CmdDraw
-  CmdEndRenderPass
-
+void draw_objects(VkCommandBuffer cmd, RenderObject* first, int count);
+draw_objects(cmd, _renderables.data(), _renderables.size());
+void init_scene();
 ```
 
-#### Code change summary
+2. Mesh uploads
+```
+get_mesh
+get_material
+```
+
+3. InitScene:
+```
+For 1 triangle:
+  tri.mesh, tri.material, translation, scale, transformMatrix
+  renderables.push_back(tri)
+```
+
+4. Draw Objects:
+```
+camPos, view, projection
+lastMesh, lastMaterial
+for(i = 0; i < count; i++) {
+  bindPipeline(material->pipeline)
+  setup model
+  setup renderMatrix
+  bindVertexBuffers
+  Draw(vertices)
+}
+```
+
+##### Additional notes
+https://github.com/David-DiGioia/monet/blob/7bd5becacbdcdca40f48fedb9098d38e47f31ff0/src/vk_engine.cpp
+
+Storage Buffers:
+  1. Create shader storage buffer:
+    a. inside init descriptors -> create buffer per frame 
+  2. New descriptor set:
+    a. add objectBuffer, objectDescriptor to frame data
+    b. Allocate a VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+    c. Initialize VkDescriptorSetLayoutBinding
+    d. vkCreateDescriptorSetLayout
+  3. Create descriptor sets to point to the buffer:
+    a. VkDescriptorSetAllocateInfo objectSetAlloc = {}; 
+    b. VkDescriptorBufferInfo objectBufferInfo; -> points to objectBuffer._buffer
+    c. Add this to the shader:
+    ```	
+      layout(std140,set = 1, binding = 0) readonly buffer ObjectBuffer{
+
+        ObjectData objects[];
+      } objectBuffer;
+      mat4 modelMatrix = objectBuffer.objects[gl_BaseInstance].model;
+    ```
+    d. Add to list of descriptors in init_pipelines: VkDescriptorSetLayout setLayouts
+  4. DrawObjects
+    
+DrawObjects ->
+  Each renderable has a mesh, material, transformObject
+  Each GPUObject has a model matrix
+  1. camData, sceneData, objectData
+  2. Copy scene data and cam data into buffers
+  3. Write object's matrices into SSBO using GPUObjectData. Each frame has an objectBuffer
+    a. Map memory for current frame's object buffer
+    b. For each renderable:
+      i. objectSSBO[id].modelMatrtix = renderable.transformMatrix
+  https://vkguide.dev/docs/chapter-4/storage_buffers/
+
+#### Experiment 1: Triangle Upload Attempt
 1.
 ```
 LoadMeshes
-
 	//make the array 3 vertices long
 	_triangleMesh._vertices.resize(3);
 
@@ -60,7 +122,6 @@ LoadMeshes
 2. 
 ```
 Draw:
-
 
 	//other code ....
 	vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -99,3 +160,30 @@ Pipeline builder
 Result:
 A rotating triangle showed up. 
 Change logic to drawScene for setting up _renderables
+
+```
+Create a list of vertices 
+Create a vertex buffer
+
+VkMesh:
+  Vertices -> pos, normal, color, uv
+  AllocatedBuffer
+
+Upload Mesh
+  Allocate vertex buffer
+  Use VMA to create the buffer
+
+Set the vertex input layout in the pipeline
+Init_Pipelines:
+  Build mesh pipeline
+  Compile Mesh Vertex Shader
+  Add the other shaders
+ 
+Draw:
+  CmdBeginRenderPass 
+  CmdBindPipeline
+  BindVertexBuffers
+  CmdDraw
+  CmdEndRenderPass
+
+```
