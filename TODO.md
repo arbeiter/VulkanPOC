@@ -6,10 +6,12 @@
 
 ### Current
 
-
-
-
 #### Experiment 2: Triangle upload with scenes
+
+Notes:
+  - Study current code to figure out how to modify draw_objects
+  - You might be able to use uniform buffers to map data into the descriptor for model data, if not use SSBOs
+  - In the worst case, you can use push constants but I'd try to avoid that
 
 1.  Add renderables
 ```
@@ -17,11 +19,6 @@ Mesh:
   getMesh, create_mesh
 Material: pipeline, pipelineLayout
   getMaterial, create_material
-struct RenderObject {
-	Mesh* mesh;
-	Material* material;
-	glm::mat4 transformMatrix;
-};
 
 struct Material {
 	VkPipeline pipeline;
@@ -37,66 +34,57 @@ draw_objects(cmd, _renderables.data(), _renderables.size());
 void init_scene();
 ```
 
-2. Mesh uploads
-```
-get_mesh
-get_material
-```
+##### Adding an SSBO for the model matrix
 
-3. InitScene:
-```
-For 1 triangle:
-  tri.mesh, tri.material, translation, scale, transformMatrix
-  renderables.push_back(tri)
-```
-
-4. Draw Objects:
-```
-camPos, view, projection
-lastMesh, lastMaterial
-for(i = 0; i < count; i++) {
-  bindPipeline(material->pipeline)
-  setup model
-  setup renderMatrix
-  bindVertexBuffers
-  Draw(vertices)
-}
-```
-
-##### Additional notes
 https://github.com/David-DiGioia/monet/blob/7bd5becacbdcdca40f48fedb9098d38e47f31ff0/src/vk_engine.cpp
 
 Storage Buffers:
   1. Create shader storage buffer:
-    a. inside init descriptors -> create buffer per frame 
+    a. inside init descriptors -> create storage buffer per frame 
   2. New descriptor set:
-    a. add objectBuffer, objectDescriptor to frame data
-    b. Allocate a VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
-    c. Initialize VkDescriptorSetLayoutBinding
-    d. vkCreateDescriptorSetLayout
+    a. add AllocatedBuffer objectBuffer, VkDescriptorSet objectDescriptor to frame data
+    b. Allocate a VK_DESCRIPTOR_TYPE_STORAGE_BUFFER DescriptorPool pool
+    c. Initialize VkDescriptorSetLayoutBinding 
+    d. vkCreateDescriptorSetLayout with DescriptorSetLayoutInfo's binding count = 1: objectSetLayout
   3. Create descriptor sets to point to the buffer:
-    a. VkDescriptorSetAllocateInfo objectSetAlloc = {}; 
-    b. VkDescriptorBufferInfo objectBufferInfo; -> points to objectBuffer._buffer
+    a. VkDescriptorSetAllocateInfo objectSetAlloc points to descriptorPool and objectSetLayout
+    AllocateDescriptorSets with objectSetAlloc
+    b. VkDescriptorBufferInfo objectBufferInfo points to objectBuffer._buffer
+    b2. Inside initDescriptorSets:
+    ```
+      objectWrite = write_descriptor_buffer
+      setWRites = { camera, scene, object }
+      updateDescriptorSets(_device, 3, setWrites, 0, nullptr);
+    ```
     c. Add this to the shader:
     ```	
       layout(std140,set = 1, binding = 0) readonly buffer ObjectBuffer{
-
         ObjectData objects[];
       } objectBuffer;
       mat4 modelMatrix = objectBuffer.objects[gl_BaseInstance].model;
     ```
-    d. Add to list of descriptors in init_pipelines: VkDescriptorSetLayout setLayouts
-  4. DrawObjects
-    
-DrawObjects ->
-  Each renderable has a mesh, material, transformObject
-  Each GPUObject has a model matrix
-  1. camData, sceneData, objectData
-  2. Copy scene data and cam data into buffers
-  3. Write object's matrices into SSBO using GPUObjectData. Each frame has an objectBuffer
-    a. Map memory for current frame's object buffer
-    b. For each renderable:
-      i. objectSSBO[id].modelMatrtix = renderable.transformMatrix
+    d. Add to list of descriptors in init_pipelines: VkDescriptorSetLayout: objectSetLayout
+  4. DrawObjects(called with: RenderObject first)
+      Each renderable has a mesh, material, transformObject
+      Each GPUObject has a model matrix
+
+      1. Set up camData(uniform), sceneData(dynamic uniform), objectData(SSBO)
+      2. Copy scene data and cam data into buffers
+      3. Write object's matrices into SSBO using GPUObjectData. Each frame has an objectBuffer
+        a. Map memory for current frame's object buffer using vmaMapMemory
+        b. For each renderable:
+          i. objectSSBO[id].modelMatrtix = renderable.transformMatrix
+      4. For each renderable:
+        a. Material
+          ```
+          vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                                  object.material->pipelineLayout, 1, 1, 
+                                  &get_current_frame().objectDescriptor, 0, nullptr);
+          ```
+        b. Mesh:
+          ```
+          glm::mat4 model = object.transformMatrix;
+          ```
   https://vkguide.dev/docs/chapter-4/storage_buffers/
 
 #### Experiment 1: Triangle Upload Attempt
@@ -185,5 +173,4 @@ Draw:
   BindVertexBuffers
   CmdDraw
   CmdEndRenderPass
-
 ```
