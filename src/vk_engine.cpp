@@ -19,7 +19,6 @@
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 
-
 constexpr bool bUseValidationLayers = true;
 
 //we want to immediately abort when there is an error. In normal engines this would give an error message to the user, or perform a dump of state.
@@ -92,50 +91,42 @@ void VulkanEngine::draw()
   VK_CHECK(vkWaitForFences(_device, 1, &_renderFence, true, 1000000000));
   VK_CHECK(vkResetFences(_device, 1, &_renderFence));
   VK_CHECK(vkResetCommandBuffer(_mainCommandBuffer, 0));
-
   uint32_t swapchainImageIndex;
   VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1000000000, _presentSemaphore, nullptr, &swapchainImageIndex));
-
   VkCommandBuffer cmd = _mainCommandBuffer;
   VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
   VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
-
   VkClearValue clearValue;
   float flash = abs(sin(_frameNumber / 120.f));
   clearValue.color = { { 0.0f, 0.0f, flash, 1.0f } };
-
   VkClearValue depthClear;
   depthClear.depthStencil.depth = 1.f;
   VkRenderPassBeginInfo rpInfo = vkinit::renderpass_begin_info(_renderPass, _windowExtent, _framebuffers[swapchainImageIndex]);
-
   rpInfo.clearValueCount = 2;
   VkClearValue clearValues[] = { clearValue, depthClear };
   rpInfo.pClearValues = &clearValues[0];
-
   vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+  // Remove this code with drawObjects
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
   vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipelineLayout, 0, 1, &descriptorSet, 0, nullptr); 
-
   VkDeviceSize offset = 0;
   vkCmdBindVertexBuffers(cmd, 0, 1, &_monkeyMesh._vertexBuffer._buffer, &offset);
-
   glm::vec3 camPos = { 0.f, 0.f, -20.f };
   glm::mat4 view = glm::translate(glm::mat4(1.f), camPos);
   glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
   projection[1][1] *= -1;
   glm::mat4 model = glm::rotate(glm::mat4{ 1.0f }, glm::radians(_frameNumber * 0.4f), glm::vec3(0, 1, 0));
-
   GPUCameraData camData;
   camData.projection = projection;
   camData.view = view;
   camData.model = model;
-
   void *data;
   vmaMapMemory(_allocator, cameraBuffer._allocation, &data);
   memcpy(data, &camData, sizeof(GPUCameraData));
   vmaUnmapMemory(_allocator, cameraBuffer._allocation);
-
   vkCmdDraw(cmd, _monkeyMesh._vertices.size(), 1, 0, 0);
+  // End block
 
   vkCmdEndRenderPass(cmd);
   VK_CHECK(vkEndCommandBuffer(cmd));
@@ -147,16 +138,13 @@ void VulkanEngine::draw()
   submit.pWaitSemaphores = &_presentSemaphore;
   submit.signalSemaphoreCount = 1;
   submit.pSignalSemaphores = &_renderSemaphore;
-
   VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, _renderFence));
-
   VkPresentInfoKHR presentInfo = vkinit::present_info();
   presentInfo.pSwapchains = &_swapchain;
   presentInfo.swapchainCount = 1;
   presentInfo.pWaitSemaphores = &_renderSemaphore;
   presentInfo.waitSemaphoreCount = 1;
   presentInfo.pImageIndices = &swapchainImageIndex;
-
   VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
   _frameNumber++;
 }

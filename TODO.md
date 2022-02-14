@@ -9,30 +9,54 @@
 #### Experiment 2: Triangle upload with scenes
 
 Notes:
-  - Study current code to figure out how to modify draw_objects
   - You might be able to use uniform buffers to map data into the descriptor for model data, if not use SSBOs
   - In the worst case, you can use push constants but I'd try to avoid that
 
-1.  Add renderables
-```
-Mesh: 
-  getMesh, create_mesh
-Material: pipeline, pipelineLayout
-  getMaterial, create_material
 
-struct Material {
-	VkPipeline pipeline;
-	VkPipelineLayout pipelineLayout;
-};
+#### Textures
 
-std::vector<RenderObject> _renderables;
-std::unordered_map<std::string, Material> _materials;
-std::unordered_map<std::string, Mesh> _meshes;
+##### Concepts:
+  VkImage  
+  VkImageView  
+  VkSampler 
+  
+* VkImage must be on the GPU. Layout should be optimal.
+  -> Load an image using STBI
+  -> Copy img data to staging buffer
+  -> VkImageCreateInfo + vmaCreateImage to create the image
+  -> Use immediate submit to issue cmd with pipeline barriers to perform the layout transition to
+TRANSFER_DST_OPTIMAL
+  -> Use a command to copy data from the buffer into the image
+  -> Use a command with a pipeline barrier to transition the image to a SHADER_READ_ONLY_OPTIMAL layout
 
-void draw_objects(VkCommandBuffer cmd, RenderObject* first, int count);
-draw_objects(cmd, _renderables.data(), _renderables.size());
-void init_scene();
-```
+* Pipeline + shaders + material stuff 
+  -> Add UV coords to Vertex, VertexInputDescription
+  -> Add u v parsing to tinyobj parsing
+  -> Add a new vert shader called tri_mesh.vert
+    -> In this shader, in and out vec2 texcoord
+  -> Add a new frag shader called textured_lit.frag 
+    -> In this shader, in and out vec2 texcoord
+    -> outFragColor = vec4(texcoord.x, texcoord.y, 0.5f, 1.0f)
+  -> Create a pipeline called texture pipeline
+    -> shaderStage init
+    -> createMaterial(texPipeline, texturedPipeLayout, 'texturedMesh')
+  -> init_scene()
+    -> RenderObject.material = get_material("texturedMesh")
+
+* Descriptor sets
+  -> New descriptor set -> Set2, binding 0
+  -> Material -> [ descriptorSet, Pipeline, PipelineLayout ]
+  -> InitDescriptors:
+    -> Pool for VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+    -> DS Layout, holds a single binding
+    -> Attach it to the layout of the pipeline
+    
+
+  
+
+
+
+
 
 ##### Adding an SSBO for the model matrix
 
